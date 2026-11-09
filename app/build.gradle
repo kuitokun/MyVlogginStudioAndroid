@@ -1,0 +1,41 @@
+plugins {
+    id 'com.android.application'
+}
+
+def runNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+
+android {
+    namespace 'com.myvloggingstudio.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.myvloggingstudio.app'
+        minSdk 29
+        targetSdk 34
+        versionCode runNumber
+        versionName "1.0.${runNumber}"
+    }
+
+    // Same key on every build, so each new APK installs over the previous one
+    signingConfigs {
+        release {
+            storeFile file('../keystore/release.p12')
+            storeType 'pkcs12'
+            storePassword '7L9vSwkLTDRjjkm4E8gXlhy0'
+            keyAlias 'mvs'
+            keyPassword '7L9vSwkLTDRjjkm4E8gXlhy0'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
