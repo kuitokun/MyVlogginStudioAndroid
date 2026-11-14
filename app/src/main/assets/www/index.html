@@ -540,7 +540,9 @@ function drawStamp(c,m,local){
   else{ctx.lineJoin='round';ctx.lineWidth=Math.max(2,fs*.18);ctx.strokeStyle='rgba(0,0,0,.8)';ctx.strokeText(txt,x,y);ctx.fillStyle=st==='amber'?'#ffb020':'#ffffff';ctx.fillText(txt,x,y)}
   ctx.restore();
 }
-function drawStamps(){const vs=videosAt(S.time);for(let i=vs.length-1;i>=0;i--){const v=vs[i],c=v.clip;if(!c.stampOn)continue;const m=S.media.get(c.mediaId);if(!m)continue;drawStamp(c,m,v.local);return}}
+// the clock comes from a video (or a frozen frame of one), never from a photo or graphic placed on top
+const stampable=(m,c)=>!!m&&(m.kind==='video'||m.generated||m.fromVideo||!!(c&&(c.frozen||c.stampBase!=null)));
+function drawStamps(){const vs=videosAt(S.time);let alt=null;for(let i=vs.length-1;i>=0;i--){const v=vs[i],c=v.clip;if(!c.stampOn)continue;const m=S.media.get(c.mediaId);if(!m)continue;if(stampable(m,c)){drawStamp(c,m,v.local);return}alt=alt||[c,m,v.local]}if(alt)drawStamp(...alt)}
 function stampPanel(c){
   const m=S.media.get(c.mediaId)||{},base=c.stampBase??m.dt,v=infoAt(c,S.time),local=v?v.local:c.in;
   const cur=base!=null?stampTimeAt(c,m,local):null;
@@ -555,7 +557,7 @@ function stampPanel(c){
     `<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn${typeof IS_MOBILE!=='undefined'?' sm':''}" data-act="stampall">Usar en todos los clips</button>${c.stampBase!=null?`<button class="btn${typeof IS_MOBILE!=='undefined'?' sm':''}" data-act="stampreset">Volver a la hora original</button>`:''}</div>`;
 }
 function stampSetFromInput(c,val){const m=S.media.get(c.mediaId)||{};const ms=Date.parse(val);if(isNaN(ms))return false;const v=infoAt(c,S.time),local=v?v.local:c.in;c.stampBase=ms-(m.kind==='video'?Math.floor(local)*1000:0);return true}
-function stampAll(c){for(const o of S.proj.video){if(o===c)continue;const m=S.media.get(o.mediaId);if(!m||m.kind==='color')continue;Object.assign(o,{stampOn:c.stampOn||1,stampFmt:c.stampFmt,stampPos:c.stampPos,stampStyle:c.stampStyle,stampSize:c.stampSize})}c.stampOn=c.stampOn||1}
+function stampAll(c){for(const o of S.proj.video){if(o===c)continue;const m=S.media.get(o.mediaId);if(!stampable(m,o))continue;Object.assign(o,{stampOn:c.stampOn||1,stampFmt:c.stampFmt,stampPos:c.stampPos,stampStyle:c.stampStyle,stampSize:c.stampSize})}c.stampOn=c.stampOn||1}
 
 
 /* ---------- model ---------- */
@@ -982,7 +984,7 @@ async function freezeFrame(){
     S.proj.audio.push(...extra);
     const f=makeVideoClip(im);f.out=D;f.start=insAt;f.track=trk(c);
     Object.assign(f,{fit:c.fit,scale:c.scale,filter:c.filter,bright:c.bright,contrast:c.contrast,sat:c.sat,posX:c.posX,posY:c.posY,size:c.size,rot:c.rot,opacity:c.opacity,stampOn:c.stampOn,stampFmt:c.stampFmt,stampPos:c.stampPos,stampStyle:c.stampStyle,stampSize:c.stampSize});
-    {const t0=stampTimeAt(c,m,v.local);if(t0!=null)f.stampBase=t0}
+    {const t0=stampTimeAt(c,m,v.local);if(t0!=null)f.stampBase=t0;f.frozen=1}
     if(c.zOn){const p0=zoomP(c,v.lt,v.dur);if(p0>.01){const fo=focusAt(c,v.lt);Object.assign(f,{zOn:1,zAmt:1+((c.zAmt??2)-1)*p0,zStart:-10,zRamp:.8,zBack:'no',zx:fo[0],zy:fo[1]})}}
     S.proj.video.push(f);S.sel={type:'video',id:f.id};commit(prev);seek(insAt+.01);refreshAll();openSheet('speed');
     toast('Cuadro congelado (2 s). Cambiá cuánto dura acá abajo.');
