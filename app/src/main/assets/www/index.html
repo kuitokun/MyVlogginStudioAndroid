@@ -445,32 +445,68 @@ const MCOL=[['#ffd23f','Amarillo'],['#ff4d4d','Rojo'],['#ffffff','Blanco'],['#3e
 function curMark(c){if(!c||!c.marks||!c.marks.length)return null;S.markIdx=clamp(S.markIdx||0,0,c.marks.length-1);return c.marks[S.markIdx]}
 function putKey(K,sT,u,v,speed){const tol=.04*(speed||1),i=K.findIndex(k=>Math.abs(k.s-sT)<tol);if(i>=0){K[i].u=u;K[i].v=v}else{K.push({s:sT,u,v});K.sort((a,b)=>a.s-b.s)}}
 function markOn(mk,sT){return mk.keys.length&&sT>=(mk.from??-1e9)&&sT<=(mk.to??1e9)}
+let MG=null; // where the selected marker was drawn, for the handles in the preview
+const markEditing=c=>!S.exporting&&S.sel?.id===c.id&&(S.inspTab==='marcar'||S.inspTab==='mark');
+function markShape(mk,hw,hh,u0){ // outline points of the shape, around (0,0), before turning
+  if(mk.shape==='arrow'){const len=Math.max(46*u0,hh);return[[0,-hh],[0,-hh-len]]}
+  return[[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]];
+}
 function drawMarks(c,v,MZ){
   if(!c.marks||!c.marks.length)return;
   const W=cv.width,H=cv.height,b=srcBox(c),u0=Math.min(W,H)/540,sT=v.local,sc=Math.hypot(MZ.a,MZ.b),ang=Math.atan2(MZ.b,MZ.a);
-  const P=(px,py)=>{const q=MZ.transformPoint(new DOMPoint(px,py));return[q.x,q.y]};
   for(const mk of c.marks){
     if(!markOn(mk,sT))continue;
     const a=clamp(Math.min(1,(sT-(mk.from??-1e9))/.2,((mk.to??1e9)-sT)/.2),0,1);
-    const[u,vv]=keyAtSrc(mk.keys,sT),[x,y]=s2c(c,u,vv),hw=mk.w*b.rx*W/2,hh=mk.h*b.ry*H/2,C=P(x*W,y*H);
+    const[u,vv]=keyAtSrc(mk.keys,sT),[x,y]=s2c(c,u,vv),q=MZ.transformPoint(new DOMPoint(x*W,y*H)),C=[q.x,q.y];
+    const hw=mk.w*b.rx*W/2*sc,hh=mk.h*b.ry*H/2*sc,turn=ang+(+mk.rot||0)*Math.PI/180,cs=Math.cos(turn),sn=Math.sin(turn);
+    const toScr=([px,py])=>[C[0]+px*cs-py*sn,C[1]+px*sn+py*cs];
     ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.filter='none';ctx.globalAlpha=a;ctx.strokeStyle=mk.color;ctx.fillStyle=mk.color;ctx.lineWidth=(+mk.stroke||5)*u0;ctx.lineJoin='round';ctx.lineCap='round';ctx.shadowColor='rgba(0,0,0,.45)';ctx.shadowBlur=6*u0;
-    let top;
-    if(mk.shape==='circle'){ctx.beginPath();ctx.ellipse(C[0],C[1],hw*sc,hh*sc,ang,0,Math.PI*2);ctx.stroke();top=C[1]-hh*sc}
-    else if(mk.shape==='arrow'){const tip=[C[0],C[1]-hh*sc],len=Math.max(46*u0,hh*sc),ah=20*u0;ctx.lineWidth=(+mk.stroke||5)*u0*1.3;ctx.beginPath();ctx.moveTo(tip[0],tip[1]-len);ctx.lineTo(tip[0],tip[1]-ah*.7);ctx.stroke();ctx.beginPath();ctx.moveTo(tip[0],tip[1]);ctx.lineTo(tip[0]-ah*.75,tip[1]-ah);ctx.lineTo(tip[0]+ah*.75,tip[1]-ah);ctx.closePath();ctx.fill();top=tip[1]-len}
-    else{const Q=[P(x*W-hw,y*H-hh),P(x*W+hw,y*H-hh),P(x*W+hw,y*H+hh),P(x*W-hw,y*H+hh)];ctx.beginPath();
-      if(ctx.roundRect&&Math.abs(ang)<1e-4)ctx.roundRect(Q[0][0],Q[0][1],Q[1][0]-Q[0][0],Q[3][1]-Q[0][1],10*u0);else{Q.forEach((q,i)=>i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]));ctx.closePath()}
-      ctx.stroke();top=Math.min(...Q.map(q=>q[1]))}
+    ctx.translate(C[0],C[1]);ctx.rotate(turn);
+    if(mk.shape==='circle'){ctx.beginPath();ctx.ellipse(0,0,hw,hh,0,0,Math.PI*2);ctx.stroke()}
+    else if(mk.shape==='arrow'){const len=Math.max(46*u0,hh),ah=20*u0;ctx.lineWidth=(+mk.stroke||5)*u0*1.3;ctx.beginPath();ctx.moveTo(0,-hh-len);ctx.lineTo(0,-hh-ah*.7);ctx.stroke();ctx.beginPath();ctx.moveTo(0,-hh);ctx.lineTo(-ah*.75,-hh-ah);ctx.lineTo(ah*.75,-hh-ah);ctx.closePath();ctx.fill()}
+    else{ctx.beginPath();ctx.roundRect?ctx.roundRect(-hw,-hh,hw*2,hh*2,Math.min(10*u0,hw,hh)):ctx.rect(-hw,-hh,hw*2,hh*2);ctx.stroke()}
+    ctx.setTransform(1,0,0,1,0,0);
+    const pts=markShape(mk,hw,hh,u0).map(toScr),top=Math.min(...pts.map(p=>p[1]));
     if(mk.label){ctx.shadowBlur=0;const fs=Math.round(22*u0);ctx.font=`700 ${fs}px Figtree, system-ui, sans-serif`;const tw=ctx.measureText(mk.label).width,ph=fs*1.5,pw=tw+fs*1.2;
       const lx=clamp(C[0]-pw/2,4*u0,W-pw-4*u0),ly=Math.max(4*u0,top-ph-6*u0);ctx.beginPath();ctx.roundRect?ctx.roundRect(lx,ly,pw,ph,ph/2):ctx.rect(lx,ly,pw,ph);ctx.fill();
       ctx.fillStyle=isLight(mk.color)?'#16140c':'#ffffff';ctx.textBaseline='middle';ctx.fillText(mk.label,lx+fs*.6,ly+ph/2+1)}
     ctx.restore();
+    if(markEditing(c)&&mk===curMark(c))MG={c,mk,C,hw,hh,turn,sc,ang,rx:b.rx*W/2,ry:b.ry*H/2,u0};
   }
+}
+function markHandles(){ // corner handles to resize and a round one to turn, in canvas pixels
+  if(!MG)return null;const{C,hw,hh,turn,mk,u0}=MG,cs=Math.cos(turn),sn=Math.sin(turn),T=([px,py])=>[C[0]+px*cs-py*sn,C[1]+px*sn+py*cs];
+  const corners=[[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(T),arrow=mk.shape==='arrow',reach=arrow?Math.max(46*u0,hh)+hh:hh;
+  const m=10*u0,W=cv.width,H=cv.height,inside=p=>[clamp(p[0],m,W-m),clamp(p[1],m,H-m)];
+  return{corners,rot:inside(T([0,-reach-(arrow?0:34*u0)])),stem:T([0,-reach]),box:corners}; // on an arrow the turn handle is its tail
+}
+function drawMarkHandles(){
+  const h=markHandles();if(!h)return;const k=cv.width/Math.max(1,cv.getBoundingClientRect().width),r=7*k;
+  ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.filter='none';ctx.shadowBlur=0;
+  ctx.setLineDash([6*k,5*k]);ctx.lineWidth=1.5*k;ctx.strokeStyle='rgba(255,255,255,.85)';ctx.beginPath();h.box.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.closePath();ctx.stroke();
+  ctx.beginPath();ctx.moveTo(...h.stem);ctx.lineTo(...h.rot);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ffffff';ctx.strokeStyle='#16140c';ctx.lineWidth=2*k;
+  for(const p of h.corners){ctx.beginPath();ctx.rect(p[0]-r,p[1]-r,r*2,r*2);ctx.fill();ctx.stroke()}
+  ctx.beginPath();ctx.arc(h.rot[0],h.rot[1],r*1.25,0,Math.PI*2);ctx.fillStyle='#f5b83d';ctx.fill();ctx.stroke();
+  ctx.strokeStyle='#16140c';ctx.lineWidth=1.6*k;ctx.beginPath();ctx.arc(h.rot[0],h.rot[1],r*.6,-.4,Math.PI*1.3);ctx.stroke();
+  ctx.restore();
 }
 function markPick(e,c,r){
   const mk=curMark(c),v0=infoAt(c,S.time);if(!mk||!v0)return;e.preventDefault();const prev=snap();try{cv.setPointerCapture(e.pointerId)}catch(_){}
   setPlaying(false);
-  const toUV=ev=>{const L=layers.find(l=>l.c===c),px=(ev.clientX-r.left)/r.width*cv.width,py=(ev.clientY-r.top)/r.height*cv.height;const M=L?(L.Z||L.M):new DOMMatrix();const p=M.inverse().transformPoint(new DOMPoint(px,py));return c2s(c,p.x/cv.width,p.y/cv.height)};
-  const set=ev=>{const v=infoAt(c,S.time);if(!v)return;const[u,vv]=toUV(ev);putKey(mk.keys,v.local,clamp(u,0,1),clamp(vv,0,1),c.speed)};set(e);
+  const px=ev=>[(ev.clientX-r.left)/r.width*cv.width,(ev.clientY-r.top)/r.height*cv.height];
+  const k=cv.width/r.width,tol=(e.pointerType==='touch'?24:13)*k,H0=MG&&MG.mk===mk?markHandles():null,P0=px(e);
+  const near=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1])<=tol;
+  let mode='move';
+  if(H0){if(near(P0,H0.rot))mode='rot';else if(H0.corners.some(q=>near(P0,q)))mode='size'}
+  const G=MG;
+  const toUV=ev=>{const L=layers.find(l=>l.c===c),[x,y]=px(ev);const M=L?(L.Z||L.M):new DOMMatrix();const p=M.inverse().transformPoint(new DOMPoint(x,y));return c2s(c,p.x/cv.width,p.y/cv.height)};
+  const set=ev=>{
+    if(mode==='rot'){const[x,y]=px(ev);let deg=(Math.atan2(y-G.C[1],x-G.C[0])+Math.PI/2-G.ang)*180/Math.PI;deg=((deg+540)%360)-180;const s=Math.round(deg/45)*45;if(Math.abs(deg-s)<5)deg=s;mk.rot=Math.round(deg);return}
+    if(mode==='size'){const[x,y]=px(ev),dx=x-G.C[0],dy=y-G.C[1],cs=Math.cos(-G.turn),sn=Math.sin(-G.turn);const lx=Math.abs(dx*cs-dy*sn),ly=Math.abs(dx*sn+dy*cs);
+      mk.w=clamp(lx/G.sc/G.rx,.03,.9);mk.h=clamp(ly/G.sc/G.ry,.03,.9);return}
+    const v=infoAt(c,S.time);if(!v)return;const[u,vv]=toUV(ev);putKey(mk.keys,v.local,clamp(u,0,1),clamp(vv,0,1),c.speed)};
+  if(mode==='move')set(e);
   const up=()=>{cv.removeEventListener('pointermove',set);cv.removeEventListener('pointerup',up);cv.removeEventListener('pointercancel',up);commit(prev);renderInsp();if(typeof renderTimeline==='function')renderTimeline()};
   cv.addEventListener('pointermove',set);cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
 }
@@ -486,7 +522,7 @@ function markPanel(c){
   h+=mseg('Forma','shape',mk.shape,[['box','Recuadro'],['circle','Círculo'],['arrow','Flecha']]);
   h+=`<div class="f"><span>Color</span><div class="seg">${MCOL.map(([v,l])=>`<button type="button" data-mset="color" data-v="${v}" class="${mk.color===v?'on':''}" aria-label="${l}"><i style="display:inline-block;width:18px;height:18px;border-radius:50%;background:${v};vertical-align:middle;border:1px solid rgba(255,255,255,.4)"></i></button>`).join('')}</div></div>`;
   h+=`<label class="f"><span>Etiqueta (opcional)</span><input type="text" data-mk="label" maxlength="28" value="${esc(mk.label||'')}" placeholder="Por ejemplo: TAXI" style="background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%;box-sizing:border-box"></label>`;
-  h+=`<div class="row2">`+mrng('Ancho','w',mk.w,3,90,1,100,'pct')+mrng('Alto','h',mk.h,3,90,1,100,'pct')+`</div>`+mrng('Grosor','stroke',+mk.stroke||5,2,14,1,1,'int');
+  h+=`<div class="row2">`+mrng('Ancho','w',mk.w,3,90,1,100,'pct')+mrng('Alto','h',mk.h,3,90,1,100,'pct')+`</div>`+`<div class="row2">`+mrng('Grosor','stroke',+mk.stroke||5,2,14,1,1,'int')+mrng('Giro','rot',+mk.rot||0,-180,180,1,1,'deg')+`</div><p class="hint" style="margin:0">También podés arrastrar en la imagen: las esquinas cambian el tamaño y el círculo naranja lo gira.</p>`;
   const fmtT=s=>s==null?'':fmtShort(+(((s-c.in)/c.speed)).toFixed(1));
   h+=`<div class="f"><span>Cuándo se ve<output>${mk.from==null&&mk.to==null?'todo el clip':(mk.from==null?'inicio':fmtT(mk.from))+' → '+(mk.to==null?'final':fmtT(mk.to))}</output></span><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn${sm}" data-act="mfrom">Empieza acá</button><button class="btn${sm}" data-act="mto">Termina acá</button><button class="btn${sm}" data-act="mall">Todo el clip</button></div></div>`;
   h+=`<div><button class="btn${sm} danger" data-act="mdel">Borrar este marcador</button></div>`;
@@ -677,13 +713,14 @@ function drawBlurBg(c,m,a){const W=cv.width,H=cv.height;if(m.kind==='color')retu
 function render(){
   const W=cv.width,H=cv.height,ov=[];
   ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.filter='none';ctx.fillStyle=S.proj.bg;ctx.fillRect(0,0,W,H);
-  layers=[];
+  layers=[];MG=null;
   for(const v of videosAt(S.time))drawLayer(v,ov);
   drawStamps();
   boxes.clear();
   for(const x of [...S.proj.text].sort((a,b)=>trk(a)-trk(b))){const lt=S.time-x.start;if(lt>=0&&lt<x.dur)drawText(x,lt)}
   if(!S.exporting&&S.sel?.type==='text'){const b=boxes.get(S.sel.id);if(b){ctx.save();ctx.setLineDash([12*SCALE*2,8*SCALE*2]);ctx.strokeStyle='#f5b83d';ctx.lineWidth=4*SCALE*2;ctx.strokeRect(b.x,b.y,b.w,b.h);ctx.restore()}}
   ov.forEach(f=>f());
+  if(!S.exporting)drawMarkHandles();
 }
 function applyAspect(){const[w,h]=ASPECTS[S.proj.aspect];cv.width=Math.round(w*SCALE);cv.height=Math.round(h*SCALE)}
 const playIco='<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg>',pauseIco='<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>';
@@ -1276,7 +1313,7 @@ async function trackForward(target){
   let u,vv;if(isMark)[u,vv]=keyAtSrc(mk.keys,c.in+lt0*c.speed);else{const f=focusAt(c,lt0);[u,vv]=c2s(c,f[0],f[1])}
   const FPS=20,GW=480,GH=Math.max(2,Math.round(GW*(m.h||9)/(m.w||16)/2)*2);
   const bx=srcBox(c),zA=c.zAmt??2,visW=GW*Math.min(1,1/(bx.rx*zA)),visH=GH*Math.min(1,1/(bx.ry*zA));
-  const half=isMark?clamp(Math.round(Math.min(mk.w*GW,mk.h*GH)*.4),10,40):clamp(Math.round(Math.min(visW,visH)*.16),10,40),R=Math.max(18,Math.round(half*1.5));
+  const half=isMark?clamp(Math.round(Math.min(mk.w*GW,mk.h*GH,.2*GW,.16*GH)*.4),10,40):clamp(Math.round(Math.min(visW,visH)*.16),10,40),R=Math.max(18,Math.round(half*1.5));
   if(u*GW<half||u*GW>GW-half-1||vv*GH<half||vv*GH>GH-half-1){toast('Lo que querés seguir está muy pegado al borde. Movelo un poco hacia adentro.');return}
   const prev=snap();track={cancel:false,pct:0};refreshSheet();
   const rd=new VReader(m),gc=document.createElement('canvas');gc.width=GW;gc.height=GH;const gx=gc.getContext('2d',{willReadFrequently:true});
