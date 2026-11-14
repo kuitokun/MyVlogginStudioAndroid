@@ -469,7 +469,7 @@ function drawMarks(c,v,MZ){
     const pts=markShape(mk,hw,hh,u0).map(toScr),top=Math.min(...pts.map(p=>p[1]));
     if(mk.label){ctx.shadowBlur=0;const fs=Math.round(22*u0);ctx.font=`700 ${fs}px Figtree, system-ui, sans-serif`;const tw=ctx.measureText(mk.label).width,ph=fs*1.5,pw=tw+fs*1.2;
       const lx=clamp(C[0]-pw/2,4*u0,W-pw-4*u0),ly=Math.max(4*u0,top-ph-6*u0);ctx.beginPath();ctx.roundRect?ctx.roundRect(lx,ly,pw,ph,ph/2):ctx.rect(lx,ly,pw,ph);ctx.fill();
-      ctx.fillStyle=isLight(mk.color)?'#16140c':'#ffffff';ctx.textBaseline='middle';ctx.fillText(mk.label,lx+fs*.6,ly+ph/2+1)}
+      ctx.fillStyle=isLight(mk.color)?'#16140c':'#ffffff';ctx.textBaseline='middle';ctx.textAlign='left';ctx.fillText(mk.label,lx+fs*.6,ly+ph/2+1)}
     ctx.restore();
     if(markEditing(c)&&mk===curMark(c))MG={c,mk,C,hw,hh,turn,sc,ang,rx:b.rx*W/2,ry:b.ry*H/2,u0};
   }
@@ -569,7 +569,7 @@ function stampTimeAt(c,m,local){const base=c.stampBase??m.dt;if(base==null)retur
 function drawStamp(c,m,local){
   const ms=stampTimeAt(c,m,local);if(ms==null)return;
   const W=cv.width,H=cv.height,txt=fmtStamp(ms,c.stampFmt||'dmy-hms'),fs=Math.round(Math.min(W,H)*(c.stampSize??3.6)/100),pad=Math.round(Math.min(W,H)*.04);
-  ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.filter='none';ctx.globalAlpha=1;ctx.font=`500 ${fs}px "JetBrains Mono", ui-monospace, Menlo, monospace`;ctx.textBaseline='alphabetic';
+  ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.filter='none';ctx.globalAlpha=1;ctx.font=`500 ${fs}px "JetBrains Mono", ui-monospace, Menlo, monospace`;ctx.textBaseline='alphabetic';ctx.textAlign='left';
   const mt=ctx.measureText(txt),tw=mt.width,asc=mt.actualBoundingBoxAscent||fs*.75,desc=mt.actualBoundingBoxDescent||fs*.2,pos=c.stampPos||'bl';
   const x=pos[1]==='l'?pad:W-pad-tw,y=pos[0]==='t'?pad+asc:H-pad-desc,st=c.stampStyle||'dash';
   if(st==='box'){const bx=fs*.4;ctx.fillStyle='rgba(0,0,0,.55)';ctx.beginPath();ctx.roundRect?ctx.roundRect(x-bx,y-asc-bx*.7,tw+bx*2,asc+desc+bx*1.4,fs*.2):ctx.rect(x-bx,y-asc-bx*.7,tw+bx*2,asc+desc+bx*1.4);ctx.fill();ctx.fillStyle='#fff';ctx.fillText(txt,x,y)}
